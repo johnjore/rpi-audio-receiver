@@ -1,55 +1,103 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+###################################################
+###################################################
+#              Scripting Settings                 #
+###################################################
+###################################################
 
+#Run apt in non-interactive mode, assume default answers.
+export DEBIAN_FRONTEND=noninteractive
+#Cause the script to fail if and error code is provided (set -e)
+#Cause the script to fail if an error code is provided while pipping commands (set -o pipefail)
+#Cause the script to fail when encountering undefined variable (set -u)
+#DEBUG MODE for Development only, Cause the script to print out every command executed (set -x)
+set -eu -o pipefail
+###################################################
+###################################################
+#               Global Variables                  #
+###################################################
+###################################################
+
+# Setting default options for function execution
+changeHostname=false
+bluetoothInstall=false
+shairportInstall=false
+raspotifyInstall=false
+UPnPRendererInstall=false
+snapclientInstall=false
+
+#Text Color and Formatting Variables
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+BLUE='\033[1;34m'
+YELLOW='\033[1;33m'
+# NORMAL='\033[0m' # No Color
+NORMAL=$(tput sgr0) # No Color
+
+#Version config
 NQPTP_VERSION="1.2.4"
 SHAIRPORT_SYNC_VERSION="4.3.6"
+
 TMP_DIR=""
 
-cleanup() {
+function cleanup() {
     if [ -d "${TMP_DIR}" ]; then
         rm -rf "${TMP_DIR}"
     fi
 }
 
-log_green() {
+function log_green() {
   local text="$1"
-  GREEN="\033[0;32m"
-  NORMAL=$(tput sgr0)
   printf "${GREEN} ${text}${NORMAL}\r\n"
 }
-
-log_red() {
+function log_blue() {
   local text="$1"
-  RED="\033[0;31m"
-  NORMAL=$(tput sgr0)
   echo $text
   printf "${RED} ${text}${NORMAL}\r\n"
 }
+function log_red() {
+  local text="$1"
 
-banner(){
+function banner(){
   # Get the terminal width
   width=$(tput cols)
   # Print a line of '=' characters
-  printf '=%.0s' $(seq 1 $width)
+  printf "${GREEN}=%.0s" $(seq 1 $width);printf "${NORMAL}"
 }
 
-apt_update_netselect(){
+function heading(){
+    local text="$1"
     banner
-    read -p "Do you want to change apt (netselect-apt)? [y/N] " REPLY
-    if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
-    sudo apt-get update
-    log_green "installing netselect-apt and executing"
-    sudo apt-get install netselect-apt -y
-    sudo netselect-apt
+    printf "${YELLOW}#  %s%*s\n" "$1" $((40 - ${#1})) " #${NORMAL}"
+    banner
 }
 
-update_latest(){
+function askQuestion() {
+  local prompt="$1"
+  local response
+  read -p "$(echo -e "${YELLOW}${prompt}${NORMAL}")" response
+  echo "$response"
+}
+
+#     # netselect on rpi doesn't seem to actually change /etc/apt/sources.list
+#     # commenting out until i figure out why
+# apt_update_netselect(){
+#     banner
+#     read -p "Do you want to change apt (netselect-apt)? [y/N] " REPLY
+#     if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
+#     sudo apt-get update
+#     log_green "installing netselect-apt and executing"
+#     sudo apt-get install netselect-apt -y
+#     sudo netselect-apt
+# }
+
+function update_latest(){
     sudo apt-get update 
     sudo apt-get upgrade -y
 }
 
-verify_os() {
+function verify_os() {
     MSG="Unsupported OS: Raspberry Pi OS 12 (bookworm) is required."
 
     if [ ! -f /etc/os-release ]; then
@@ -67,12 +115,11 @@ verify_os() {
     fi
 }
 
-set_hostname() {
+function set_hostname() {
     if [[ -z $changeHostname ]]; then 
       if ! $changeHostname ; then return; fi
 
-      log_green "Device Name Settings"
-      banner
+      heading "Device Name Settings"
 
       CURRENT_PRETTY_HOSTNAME=$(hostnamectl status --pretty)
 
@@ -85,24 +132,23 @@ set_hostname() {
     fi
 }
 
-install_snapcast(){
+function install_snapcast(){
     if [[ -z $snapclientInstall ]]; then 
-      read -p "Do you want to install UPnP renderer? [y/N] " REPLY
-      #https://github.com/Torgee/rpi-audio-receiver/blob/master/install-snapcast.sh
+      REPLY=$(askQuestion "Do you want to install a snapcast client? [y/N] " )
+      # read -p "Do you want to install a snapcast client? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $snapclientInstall; then return; fi
 
-    log_green "Installing snapcast client"
-    banner
+    heading "Installing snapcast client"
 
     sudo apt install --no-install-recommends -y snapclient    
 }
 
-install_UPnP_renderer(){
+function install_UPnP_renderer(){
     if [[ -z $UPnPRendererInstall ]]; then 
-      read -p "Do you want to install UPnP renderer? [y/N] " REPLY
-      #https://github.com/Torgee/rpi-audio-receiver/blob/master/install-upnp.sh
+      REPLY=$(askQuestion "Do you want to install UPnP renderer? [y/N] " )
+      # read -p "Do you want to install UPnP renderer? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $UPnPRendererInstall ; then return; fi
@@ -110,7 +156,7 @@ install_UPnP_renderer(){
     log_green "Installing UPnP renderer (gmrender-resurrect)"
     banner
 
-    sudo apt update
+    # sudo apt update
     sudo apt install -y --no-install-recommends gmediarender gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-alsa
 
     LIBRESPOT_NAME="${PRETTY_HOSTNAME// /-}"
@@ -126,18 +172,18 @@ EOF
     sudo systemctl enable --now gmediarender
 }
 
-install_bluetooth() {
+function install_bluetooth() {
     if [[ -z $bluetoothInstall ]]; then 
-      read -p "Do you want to install Bluetooth Audio (ALSA)? [y/N] " REPLY
+      REPLY=$(askQuestion "Do you want to install Bluetooth Audio (ALSA)? [y/N] " )
+      # read -p "Do you want to install Bluetooth Audio (ALSA)? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $bluetoothInstall ; then return; fi
 
-    log_green "Bluetooth installation"
-    banner
+    heading "Bluetooth installation"
 
-    log_green "Bluetooth: Setting Audio ALSA Backend (bluez-alsa-utils)"
-    sudo apt update
+    log_green "Bluetooth: Installing Audio ALSA Backend (bluez-alsa-utils)"
+    # sudo apt update
     sudo apt install -y --no-install-recommends bluez-tools bluez-alsa-utils
 
     log_green "Bluetooth: creating basic settings"
@@ -198,32 +244,39 @@ SUBSYSTEM=="input", GROUP="input", MODE="0660"
 KERNEL=="input[0-9]*", RUN+="/usr/local/bin/bluetooth-udev"
 EOF
 
-read -p "Do you want to configure Bluetooth A2DP volume? [y/N] " REPLY
-if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
-# Enable A2DP volume control
-    sudo mkdir -p /etc/systemd/system/bluetooth.service.d
-    sudo tee /etc/systemd/system/bluetooth.service.d/override.conf >/dev/null  <<'EOF'
-[Service]
-ExecStart=
-ExecStart=/usr/libexec/bluetooth/bluetoothd --plugin=a2dp
-EOF
+sudo systemctl daemon-reload
 
-
+log_blue "Disabled due to unreliable results for bluetooth.service naming and bluetoothctl agent configuration"
+#read -p "Do you want to configure Bluetooth A2DP volume? [y/N] " REPLY
+#if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
+#  # Enable A2DP volume control
+#    log_green "Bluetooth: Installing Audio Pulse Audio"
+#    sudo apt-get install alsa-utils bluez bluez-tools pulseaudio-module-bluetooth 
+#
+#    sudo mkdir -p /etc/systemd/system/bluetooth.service.d
+#    sudo tee /etc/systemd/system/bluetooth.service.d/override.conf >/dev/null  <<'EOF'
+#[Service]
+#ExecStart=
+#ExecStart=/usr/libexec/bluetooth/bluetoothd --plugin=a2dp
+#EOF
+#sudo systemctl daemon-reload
+#sudo systemctl restart bluetooth.service
+#
 }
 
-install_shairport() {
+function install_shairport() {
     if [[ -z $shairportInstall ]]; then 
-      read -p "Do you want to install Shairport Sync (AirPlay 2 audio player)? [y/N] " REPLY
+      REPLY=$(askQuestion "Do you want to install Shairport Sync (AirPlay 2 audio player)? [y/N] " )
+      #read -p "Do you want to install Shairport Sync (AirPlay 2 audio player)? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $shairportInstall; then return; fi
     
-    log_green "Installing Shairport Sync"
-    banner
+    heading "Installing Shairport Sync"
 
-    sudo apt update
+    # sudo apt update
     sudo apt install -y --no-install-recommends wget unzip autoconf automake build-essential libtool git autoconf automake libpopt-dev libconfig-dev libasound2-dev avahi-daemon libavahi-client-dev libssl-dev libsoxr-dev libplist-dev libsodium-dev libavutil-dev libavcodec-dev libavformat-dev uuid-dev libgcrypt20-dev xxd
-
+    
     if [[ -z "$TMP_DIR" ]]; then
         TMP_DIR=$(mktemp -d)
     fi
@@ -281,15 +334,16 @@ EOF
     sudo systemctl enable --now shairport-sync
 }
 
-install_raspotify() {
+function install_raspotify() {
     if [[ -z $raspotifyInstall ]]; then 
-      read -p "Do you want to install Raspotify (Spotify Connect)? [y/N] " REPLY
+      REPLY=$(askQuestion "Do you want to install Raspotify (Spotify Connect)? [y/N] " )
+      #read -p "Do you want to install Raspotify (Spotify Connect)? [y/N] " REPLY
+
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $raspotifyInstall; then return; fi
 
-    log_green "Installing Install Raspotify"
-    banner
+    heading "Installing Install Raspotify"
 
     # Install Raspotify
     curl -sL https://dtcooper.github.io/raspotify/install.sh | sh
@@ -317,15 +371,8 @@ EOF
 
 trap cleanup EXIT
 
-log_green "Raspberry Pi Audio Receiver"
-banner
+heading "Raspberry Pi Audio Receiver Install script"
 
-changeHostname=false
-bluetoothInstall=false
-shairportInstall=false
-raspotifyInstall=false
-UPnPRendererInstall=false 
-snapclientInstall=false 
 while getopts "nbsruc" opt; do
   case "$opt" in
     n) changeHostname=true ;;
@@ -347,7 +394,7 @@ while getopts "nbsruc" opt; do
 done
 
 if (( $OPTIND == 1 )); then
-  echo "Default option"
+  echo "Default installation options"
   changeHostname=""
   bluetoothInstall=""
   shairportInstall=""
@@ -355,13 +402,36 @@ if (( $OPTIND == 1 )); then
   UPnPRendererInstall=""
   snapclientInstall=""
   verify_os
-  apt_update_netselect
+
+  # apt_update_netselect
 fi
 
+### Update the apt cache and latest files.
+update_latest
+### Set the hostname and the bluetooth name
 set_hostname $changeHostname
+
+### Install the bluetooth driver and settings configuration
+### Noting that there is no way to 'Simple pair' on current raspbian config
 install_bluetooth $bluetoothInstall
+
+### allow for Apple devices to operate
 install_shairport $shairportInstall
+
+### Raspotify setup
 install_raspotify $raspotifyInstall
-install_snapcast $snapclientInstall
+### An attempt at UPnP render:
+##  should open the door for other random applications to stream audio
+# https://github.com/Torgee/rpi-audio-receiver/blob/master/install-upnp.sh
 install_UPnP_renderer $UPnPRendererInstall
 
+### the basics of a snapcast client is installed and setup.
+## attempted to rip 
+# https://github.com/Arcadia197/rpi-audio-receiver/blob/rpi-zero-w/install-snapcast-client.sh
+      
+install_snapcast $snapclientInstall
+
+### All finished
+banner
+log_green "Installation script completed!"
+banner

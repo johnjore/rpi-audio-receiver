@@ -21,6 +21,11 @@ The installation script asks whether to install each component.
     wget https://raw.githubusercontent.com/nicokaiser/rpi-audio-receiver/main/install.sh
     bash install.sh
 
+or
+    
+    wget https://raw.githubusercontent.com/flammableliquids/rpi-audio-receiver/main/install.sh
+    bash install.sh
+
 **Note**: the installation process is not reversible, there is no uninstall. The script is meant to be run on a clean device that is not used for anything else.
 
 ### Basic setup
@@ -44,20 +49,24 @@ Installs [Shairport Sync](https://github.com/mikebrady/shairport-sync) AirPlay 2
 
 Installs [Raspotify](https://github.com/dtcooper/raspotify), an open source Spotify client for Raspberry Pi.
 
-## Additional steps
+## Optional Manual Steps
+
+> [!TIP]
+> An example config.txt has been included
+> based on a DigiAmp+ and a Raspberry Pi Model 3.
 
 ### Enable HiFiBerry device
 
 When using a HiFiBerry or similar I2C device, a device tree overlay needs to be enabled in `/boot/firmware/config.txt` (replace `dacplus` with the overlay that fits your hardware):
 
-```
+```ini
 ...
 dtoverlay=hifiberry-dacplus
 ```
 
 To enable the software volume mixer, `/etc/asound.conf` needs to be created:
 
-```
+```ini
 defaults.pcm.card 0
 defaults.ctl.card 0
 
@@ -103,6 +112,40 @@ pcm.!default {
 }
 ```
 
+### Enabling Audio DAC Amp Hats:
+
+|IQaudio Card| /boot/firmware/config.txt|
+|---|---|
+| DAC+ | ```dtoverlay=iqaudio-dacplus ``` |
+| DAC PRO | ```dtoverlay=iqaudio-dacplus ``` |
+| DigiAMP+ |  ```dtoverlay=iqaudio-dacplus,unmute_amp ``` or ``` dtoverlay=iqaudio-dacplus,auto_mute_amp ``` |
+| Codec Zero |```dtoverlay=iqaudio-codec ```|
+|Raspi CodeZero |```dtoverlay=rpi-codeczero ```|
+|Raspi DAC+ |```dtoverlay=rpi-dacplus ```|
+|Raspi DACPro |```dtoverlay=rpi-dacpro ```|
+|Raspi DigiAMP+ |```dtoverlay=rpi-digiampplus ```|
+
+### Disable internal Bluetooth and Audio
+
+When an external audio device (HDMI, USB, I2S) is used, the internal audio can be disabled in `/boot/firmware/config.txt` (replace `hifiberry-dacplus` with the overlay which fits your installation):
+
+```ini
+dtoverlay=disable-bt
+dtparam=audio=off
+dtoverlay=pi3-disable-bt
+```
+
+```
+dtoverlay=vc4-kms-v3d,noaudio
+dtoverlay=dwc2,dr_mode=host
+
+```
+
+#### Enable Raspberry Pi DigiAmp Plus
+```
+dtoverlay=rpi-digiampplus,auto_mute_amp
+```
+
 ### Read-only mode
 
 To avoid SD card corruption when powering off, you can boot Raspberry Pi OS in read-only mode. This can be achieved using the `raspi-config` script (in the "Performance" section).
@@ -114,38 +157,6 @@ Disabling Wi-Fi power management might resolve some connection issues:
 ```sh
 sudo nmcli connection modify preconfigured wifi.powersave 2
 ```
-
-### Enabling Audio DAC Amp Hats:
-
-|IQaudio Card| /boot/firmware/config.txt|
-|---|---|
-| DAC+ | ```dtoverlay=iqaudio-dacplus ``` |
-| DAC PRO | ```dtoverlay=iqaudio-dacplus ``` |
-| DigiAMP+ |  ```dtoverlay=iqaudio-dacplus,unmute_amp ``` or ``` dtoverlay=iqaudio-dacplus,auto_mute_amp ``` |
-| Codec Zero |```dtoverlay=iqaudio-codec ```|
-| |```dtoverlay=rpi-codeczero ```|
-| |```dtoverlay=rpi-dacplus ```|
-| |```dtoverlay=rpi-dacpro ```|
-| |```dtoverlay=rpi-digiampplus ```|
-
-### Disable internal Bluetooth and Audio
-
-When an external audio device (HDMI, USB, I2S) is used, the internal audio can be disabled in `/boot/firmware/config.txt` (replace `hifiberry-dacplus` with the overlay which fits your installation):
-
-```
-dtoverlay=disable-bt
-dtparam=audio=off
-dtoverlay=pi3-disable-bt
-```
-```
-dtoverlay=vc4-kms-v3d,noaudio
-dtoverlay=dwc2,dr_mode=host
-```
-#### Enable Raspberry Pi DigiAmp Plus
-```
-dtoverlay=rpi-digiampplus,auto_mute_amp
-```
-
 ### Add Bluetooth devices
 
 The device should be visible for new Bluetooth connections, but in some cases you might need to pair them manually:
@@ -165,7 +176,7 @@ If you really want to use the internal Bluetooth module, you almost certainly ne
 
 Modify `/usr/local/bin/bluetooth-udev` and remove the comments (`#`) around the `ifconfig` calls:
 
-```
+```ini
 ...
 if [ "$action" = "add" ]; then
     ...
@@ -183,6 +194,9 @@ fi
 ### Bluetooth A2DP volume
 
 To enable A2DP volume control, add the `--plugin=a2dp` parameter to the `bluetoothd` command line. This helps setting the volume via Bluetooth, but does not work on all setups.
+```sh
+sudo apt-get install alsa-utils bluez bluez-tools pulseaudio-module-bluetooth
+```
 
 ```sh
 # Enable A2DP volume control
@@ -193,14 +207,15 @@ ExecStart=
 ExecStart=/usr/libexec/bluetooth/bluetoothd --plugin=a2dp
 EOF
 ```
-
 ### Bluetooth Fast Connectable
+> [!WARNING]
+>  Bluetooth Fast connection can mess up your bluetooth configuration
 
 Using the `FastConnectable` flag may lead to faster Bluetooth connections, but may also lead to poor sound quality. You can try and see if it works for you. See [#70](https://github.com/nicokaiser/rpi-audio-receiver/issues/70)
 
 Add the flag to the `General` section in `/etc/bluetooth/main.conf`:
 
-```
+```ini
 [General]
 ...
 FastConnectable = true
@@ -225,6 +240,9 @@ To enable pairing with a PIN code instead of Simple Secure Pairing mode, the fol
 
 So you need to try yourself if this works with your setup.
 
+> [!WARNING]
+>  
+
 ## Limitations
 
 - Only one Bluetooth device can be connected at a time, otherwise interruptions may occur.
@@ -236,6 +254,25 @@ So you need to try yourself if this works with your setup.
 ## Disclaimer
 
 These scripts are tested and work on a current Raspberry Pi OS setup on Raspberry Pi. Depending on your setup (board, configuration, sound module, Bluetooth adapter) and your preferences, you might need to adjust the scripts. They are held as simple as possible and can be used as a starting point for additional adjustments.
+
+## Trouble shooting:
+
+### Bluetooth:
+
+It can fail to power on after first boot:
+```sh
+bluetoothctl
+power on
+```
+The bluetooth.service can 'Fail to set mode: Failed'
+```sh
+sudo rfkill unblock bluetooth
+sudo systemctl stop bluetooth
+sudo systemctl status bluetooth
+sudo systemctl restart bluetooth
+```
+
+If it comes up with a Bluetooth name like 'Bluez', you may need to wipe and start over.
 
 ## Upgrading
 
