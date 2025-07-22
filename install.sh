@@ -58,6 +58,8 @@ function log_blue() {
 }
 function log_red() {
   local text="$1"
+  printf "${RED} ${text}${NORMAL}\r\n"
+}
 
 function banner(){
   # Get the terminal width
