@@ -17,11 +17,6 @@ Devices like phones, tablets and computers can play audio via this receiver.
 ## Installation
 
 The installation script asks whether to install each component.
-
-    wget https://raw.githubusercontent.com/nicokaiser/rpi-audio-receiver/main/install.sh
-    bash install.sh
-
-or
     
     wget https://raw.githubusercontent.com/flammableliquids/rpi-audio-receiver/main/install.sh
     bash install.sh
