@@ -13,6 +13,7 @@ export DEBIAN_FRONTEND=noninteractive
 #Cause the script to fail when encountering undefined variable (set -u)
 #DEBUG MODE for Development only, Cause the script to print out every command executed (set -x)
 set -eu -o pipefail
+# set -x
 ###################################################
 ###################################################
 #               Global Variables                  #
@@ -39,7 +40,16 @@ NORMAL=$(tput sgr0) # No Color
 NQPTP_VERSION="1.2.4"
 SHAIRPORT_SYNC_VERSION="4.3.6"
 
+#Set hostname
+PRETTY_HOSTNAME=$(hostnamectl status --pretty)
+PRETTY_HOSTNAME=${PRETTY_HOSTNAME:-$(hostname)}
 TMP_DIR=""
+###################################################
+###################################################
+#               Function Definitions              #
+###################################################
+###################################################
+
 
 function cleanup() {
     if [ -d "${TMP_DIR}" ]; then
@@ -60,7 +70,10 @@ function log_red() {
   local text="$1"
   printf "${RED} ${text}${NORMAL}\r\n"
 }
-
+function log_yellow() {
+  local text="$1"
+  printf "${YELLOW} ${text}${NORMAL}\r\n"
+}
 function banner(){
   # Get the terminal width
   width=$(tput cols)
@@ -95,7 +108,7 @@ function askQuestion() {
 # }
 
 function update_latest(){
-    sudo apt-get update 
+    sudo apt-get update
     sudo apt-get upgrade -y
 }
 
@@ -117,8 +130,21 @@ function verify_os() {
     fi
 }
 
+function verify_raspberryZero(){
+    MODEL=$(grep Model /proc/cpuinfo | awk -F: '{ gsub(/^ +| +$/, "", $2) ;print $2}')
+    if [[ "$MODEL" == *" Zero "* ]]; then
+      log_yellow "dtCooper's version does not support Raspberry Pi Zero at this stage."
+      # echo "GO"
+      return 0
+    else
+      log_yellow "Device detected as ${MODEL}"
+      # echo "NO"
+      return 1
+    fi
+}
+
 function set_hostname() {
-    if [[ -z $changeHostname ]]; then 
+    if [[ -z $changeHostname ]]; then
       if ! $changeHostname ; then return; fi
 
       heading "Device Name Settings"
@@ -128,6 +154,7 @@ function set_hostname() {
       read -p "Hostname [$(hostname)]: " HOSTNAME
       sudo raspi-config nonint do_hostname ${HOSTNAME:-$(hostname)}
 
+      eRCH=$(uname -m)
       read -p "Pretty hostname [${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}]: " PRETTY_HOSTNAME
       PRETTY_HOSTNAME="${PRETTY_HOSTNAME:-${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}}"
       sudo hostnamectl set-hostname --pretty "$PRETTY_HOSTNAME"
@@ -135,7 +162,7 @@ function set_hostname() {
 }
 
 function install_snapcast(){
-    if [[ -z $snapclientInstall ]]; then 
+    if [[ -z $snapclientInstall ]]; then
       REPLY=$(askQuestion "Do you want to install a snapcast client? [y/N] " )
       # read -p "Do you want to install a snapcast client? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
@@ -144,11 +171,11 @@ function install_snapcast(){
 
     heading "Installing snapcast client"
 
-    sudo apt install --no-install-recommends -y snapclient    
+    sudo apt install --no-install-recommends -y snapclient
 }
 
 function install_UPnP_renderer(){
-    if [[ -z $UPnPRendererInstall ]]; then 
+    if [[ -z $UPnPRendererInstall ]]; then
       REPLY=$(askQuestion "Do you want to install UPnP renderer? [y/N] " )
       # read -p "Do you want to install UPnP renderer? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
@@ -175,7 +202,7 @@ EOF
 }
 
 function install_bluetooth() {
-    if [[ -z $bluetoothInstall ]]; then 
+    if [[ -z $bluetoothInstall ]]; then
       REPLY=$(askQuestion "Do you want to install Bluetooth Audio (ALSA)? [y/N] " )
       # read -p "Do you want to install Bluetooth Audio (ALSA)? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
@@ -253,7 +280,7 @@ log_blue "Disabled due to unreliable results for bluetooth.service naming and bl
 #if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
 #  # Enable A2DP volume control
 #    log_green "Bluetooth: Installing Audio Pulse Audio"
-#    sudo apt-get install alsa-utils bluez bluez-tools pulseaudio-module-bluetooth 
+#    sudo apt-get install alsa-utils bluez bluez-tools pulseaudio-module-bluetooth
 #
 #    sudo mkdir -p /etc/systemd/system/bluetooth.service.d
 #    sudo tee /etc/systemd/system/bluetooth.service.d/override.conf >/dev/null  <<'EOF'
@@ -267,13 +294,12 @@ log_blue "Disabled due to unreliable results for bluetooth.service naming and bl
 }
 
 function install_shairport() {
-    if [[ -z $shairportInstall ]]; then 
+    if [[ -z $shairportInstall ]]; then
       REPLY=$(askQuestion "Do you want to install Shairport Sync (AirPlay 2 audio player)? [y/N] " )
       #read -p "Do you want to install Shairport Sync (AirPlay 2 audio player)? [y/N] " REPLY
       if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
     fi
     if ! $shairportInstall; then return; fi
-    
     heading "Installing Shairport Sync"
 
     # sudo apt update
@@ -337,7 +363,7 @@ EOF
 }
 
 function install_raspotify() {
-    if [[ -z $raspotifyInstall ]]; then 
+    if [[ -z $raspotifyInstall ]]; then
       REPLY=$(askQuestion "Do you want to install Raspotify (Spotify Connect)? [y/N] " )
       #read -p "Do you want to install Raspotify (Spotify Connect)? [y/N] " REPLY
 
@@ -346,15 +372,16 @@ function install_raspotify() {
     if ! $raspotifyInstall; then return; fi
 
     heading "Installing Install Raspotify"
+    if ! verify_raspberryZero; then
+        # If you can, then pull and execute the dtcooper version
+        log_blue "Pulling dtcooper raspotify"
+        curl -sL https://dtcooper.github.io/raspotify/install.sh | sh
 
-    # Install Raspotify
-    curl -sL https://dtcooper.github.io/raspotify/install.sh | sh
+	log_green "Raspotify: Configure Raspotify"
+	LIBRESPOT_NAME="${PRETTY_HOSTNAME// /-}"
+	LIBRESPOT_NAME=${LIBRESPOT_NAME:-$(hostname)}
 
-    log_green "Raspotify: Configure Raspotify"
-    LIBRESPOT_NAME="${PRETTY_HOSTNAME// /-}"
-    LIBRESPOT_NAME=${LIBRESPOT_NAME:-$(hostname)}
-
-    sudo tee /etc/raspotify/conf >/dev/null <<EOF
+	sudo tee /etc/raspotify/conf >/dev/null <<EOF
 LIBRESPOT_QUIET=on
 LIBRESPOT_AUTOPLAY=off
 LIBRESPOT_DISABLE_AUDIO_CACHE=off
@@ -369,9 +396,94 @@ EOF
     log_green "Raspotify: daemon reload and enable"
     sudo systemctl daemon-reload
     sudo systemctl enable --now raspotify
+
+    else
+        # If it's RPI Zero, then install the GO version of Raspotify
+        # Verify system archtecture and download the right version
+        ARCH=$(uname -m)
+
+        if [ $ARCH = "armv6l" ]; then
+		ARCH="armv6_rpi"
+        elif [ $ARCH = "armv7l" ] || [ $ARCH = "armv8" ] || [ $ARCH = "armhf" ]; then
+		ARCH="armv6"
+        elif [ $ARCH = "arm64" ] || [ $ARCH = "aarch64" ]; then
+		ARCH="arm64"
+        else
+		echo "Platform not supported"
+		exit 1
+        fi
+
+        CONFIG_DIR=$HOME/.config/go-librespot
+        [ -d $CONFIG_DIR ] || mkdir -p $CONFIG_DIR
+        cat << EOF > $CONFIG_DIR/config.yml
+device_name: $PRETTY_HOSTNAME
+zeroconf_enabled: true
+volume_steps: 10
+initial_volume: 100
+device_type: speaker
+bitrate: 320
+EOF
+
+        log_yellow "OS Detected as ${ARCH} will download the related GO client"
+        sudo apt-get install -y libogg-dev libvorbis-dev libasound2-dev
+        if sudo systemctl is-active go-librespot-daemon.service; then
+            sudo systemctl stop go-librespot-daemon.service
+        fi
+        DAEMON_BASE_URL=https://github.com/devgianlu/go-librespot/releases/latest/download
+        DAEMON_ARCHIVE=go-librespot_linux_$ARCH.tar.gz
+        DAEMON_DOWNLOAD_URL=$DAEMON_BASE_URL/$DAEMON_ARCHIVE
+        DAEMON_DOWNLOAD_PATH=$DAEMON_ARCHIVE
+        curl -L --progress-bar $DAEMON_DOWNLOAD_URL -o ./$DAEMON_DOWNLOAD_PATH
+	log_green "extracting downloaded files"
+        sudo tar xzvf $DAEMON_DOWNLOAD_PATH -C /usr/bin/ go-librespot
+        rm $DAEMON_DOWNLOAD_PATH
+        sudo chmod a+x /usr/bin/go-librespot
+
+	echo "#!/bin/sh
+
+# Traceback Setting
+export GOTRACEBACK=crash
+
+echo 'Librespot-go daemon starting...'
+/usr/bin/go-librespot --config_dir $CONFIG_DIR" | sudo tee /bin/start-go-librespot.sh
+
+	sudo chmod a+x /bin/start-go-librespot.sh
+	
+	GROUP=$(id -gn)
+	
+	echo "[Unit]
+Description = go-librespot Daemon
+
+[Service]
+After=network-online.target
+Wants=network-online.target
+ExecStart=/bin/start-go-librespot.sh
+Restart=always
+RestartSec=3
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=go-librespot
+User=$USER
+Group=$GROUP
+[Install]
+WantedBy=multi-user.target" | sudo tee /lib/systemd/system/go-librespot-daemon.service
+	
+	sudo systemctl daemon-reload
+	sudo systemctl enable go-librespot-daemon
+	sudo systemctl start go-librespot-daemon
+	log_green "GO librespot daemon installation finished!"
+
+    fi
 }
 
 trap cleanup EXIT
+
+###################################################
+###################################################
+#               GetOpts and Execution             #
+###################################################
+###################################################
+
 
 heading "Raspberry Pi Audio Receiver Install script"
 
@@ -389,7 +501,7 @@ while getopts "nbsruc" opt; do
       -s Install Shairplay (Airplay support)
       -r Raspotify (Spotify support)
       -u UPnP Render Install
-      -c Snapcast Client Install" 
+      -c Snapcast Client Install"
       exit 1
       ;;
   esac
@@ -408,7 +520,7 @@ if (( $OPTIND == 1 )); then
   # apt_update_netselect
 fi
 
-### Update the apt cache and latest files.
+### Update the apt cache and latest packages.
 update_latest
 ### Set the hostname and the bluetooth name
 set_hostname $changeHostname
@@ -428,9 +540,9 @@ install_raspotify $raspotifyInstall
 install_UPnP_renderer $UPnPRendererInstall
 
 ### the basics of a snapcast client is installed and setup.
-## attempted to rip 
+## attempted to rip
 # https://github.com/Arcadia197/rpi-audio-receiver/blob/rpi-zero-w/install-snapcast-client.sh
-      
+
 install_snapcast $snapclientInstall
 
 ### All finished
