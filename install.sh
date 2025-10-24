@@ -145,23 +145,27 @@ function verify_raspberryZero(){
 
 function set_hostname() {
     if [[ -z $changeHostname ]]; then
-      REPLY=$(askQuestion "Do you want to Change Hostname [y/N] " )
-      if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then return; fi
+        REPLY=$(askQuestion "Do you want to Change Hostname [y/N] ")
+        if [[ ! "$REPLY" =~ ^(yes|y|Y)$ ]]; then
+            return
+        fi
     fi
-      if ! $changeHostname ; then return; fi
 
-      heading "Device Name Settings"
-
-      CURRENT_PRETTY_HOSTNAME=$(hostnamectl status --pretty)
-
-      read -p "Hostname [$(hostname)]: " HOSTNAME
-      sudo raspi-config nonint do_hostname ${HOSTNAME:-$(hostname)}
-
-      eRCH=$(uname -m)
-      read -p "Pretty hostname [${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}]: " PRETTY_HOSTNAME
-      PRETTY_HOSTNAME="${PRETTY_HOSTNAME:-${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}}"
-      sudo hostnamectl set-hostname --pretty "$PRETTY_HOSTNAME"
+    if ! $changeHostname; then
+        return
     fi
+
+    heading "Device Name Settings"
+
+    CURRENT_PRETTY_HOSTNAME=$(hostnamectl status --pretty)
+
+    read -p "Hostname [$(hostname)]: " HOSTNAME
+    sudo raspi-config nonint do_hostname "${HOSTNAME:-$(hostname)}"
+
+    eRCH=$(uname -m)
+    read -p "Pretty hostname [${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}]: " PRETTY_HOSTNAME
+    PRETTY_HOSTNAME="${PRETTY_HOSTNAME:-${CURRENT_PRETTY_HOSTNAME:-Raspberry Pi}}"
+    sudo hostnamectl set-hostname --pretty "$PRETTY_HOSTNAME"
 }
 
 function install_snapcast(){
